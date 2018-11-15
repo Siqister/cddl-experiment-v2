@@ -1,0 +1,43 @@
+{
+  "name": "webpack-template",
+  "version": "1.0.0",
+  "description": "Project template with React, Webpack",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha './src/**/*.test.js' --compilers js:babel-core/register",
+    "test:watch": "npm test -- --watch",
+    "start": "webpack-dev-server --mode development --config webpack.config.dev.js --inline",
+    "build": "webpack --mode production --config webpack.config.prod.js",
+    "dev": "parallelshell 'npm run test:watch' 'npm start'",
+    "lint": "eslint src"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.1.2",
+    "@babel/preset-env": "^7.1.0",
+    "@babel/preset-react": "^7.0.0",
+    "babel-loader": "^8.0.4",
+    "css-loader": "^1.0.1",
+    "eslint": "^5.8.0",
+    "eslint-plugin-react": "^7.11.1",
+    "expect": "^23.6.0",
+    "file-loader": "^2.0.0",
+    "mocha": "^5.2.0",
+    "parallelshell": "^3.0.2",
+    "path": "^0.12.7",
+    "style-loader": "^0.23.1",
+    "uglifyjs-webpack-plugin": "^2.0.1",
+    "url-loader": "^1.1.2",
+    "webpack": "^4.23.1",
+    "webpack-cli": "^3.1.2",
+    "webpack-dev-server": "^3.1.10",
+    "webpack-merge": "^4.1.4"
+  },
+  "dependencies": {
+    "d3": "^5.7.0",
+    "dat.gui": "^0.7.3",
+    "react": "^16.6.0",
+    "three": "^0.98.0"
+  }
+}
