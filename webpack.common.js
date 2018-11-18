@@ -4,12 +4,14 @@ const path = require('path');
 
 module.exports = {
 	entry:[
-		'./src/index.js',
-		'./src/index.html'
+		'./src/gl/index.js',
 	],
 	output:{
 		path: path.resolve(__dirname,'dist'),
-		filename:'bundle.js'
+		filename:'bundle.js',
+    library: 'cddl',
+    libraryTarget: 'umd',
+    umdNamedDefine: true,
 	},
 	module:{
 		rules:[
