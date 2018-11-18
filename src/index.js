@@ -24,8 +24,8 @@ const glModule = GLModule(gl, canvas)
 	.setInstances(INSTANCES)
 	//.log()
 	.onClick((id, category) => {
-		console.log(id);
-		console.log(category);
+		console.log(`Card index (from 0 to 3999): ${id}`);
+		console.log(`Card category (from 0 to 9): ${category}`);
 	}, canvas);
 //Must call instance to start rendering
 //This will start a render loop

@@ -4,7 +4,8 @@ import {
 	POSITION_LOCATION,
 	COLOR_LOCATION,
 	AGE_LOCATION,
-	INIT_OFFSET_LOCATION
+	INIT_OFFSET_LOCATION,
+  PICKING_COLOR_LOCATION
 } from './config';
 
 const vs = `#version 300 es
@@ -14,6 +15,7 @@ const vs = `#version 300 es
 	#define COLOR_LOCATION ${COLOR_LOCATION}
   #define AGE_LOCATION ${AGE_LOCATION}
   #define INIT_OFFSET_LOCATION ${INIT_OFFSET_LOCATION}
+  #define PICKING_COLOR_LOCATION ${PICKING_COLOR_LOCATION}
 
   #define M_2PI 6.28318530718
 
@@ -22,12 +24,14 @@ const vs = `#version 300 es
 
   uniform float u_w;
   uniform float u_h;
+  uniform float u_usePickingColor;
 
   layout(location = OFFSET_LOCATION) in vec2 a_offset;
   layout(location = ROTATION_LOCATION) in float a_rotation;
   layout(location = POSITION_LOCATION) in vec2 a_position;
   layout(location = COLOR_LOCATION) in vec3 a_color;
   layout(location = AGE_LOCATION) in float a_age;
+  layout(location = PICKING_COLOR_LOCATION) in vec3 a_picking_color;
 
   out vec3 v_color;
   out float v_alpha;
@@ -50,12 +54,18 @@ const vs = `#version 300 es
     gl_Position = vec4(position, 0.0, 1.0);
 
     v_color = a_color;
+    if(u_usePickingColor > 0.0){
+      v_color = a_picking_color;
+    }
     v_alpha = sin(a_age * M_2PI / 2.0);
+    if(u_usePickingColor > 0.0){
+      v_alpha = 1.0;
+    }
   }
 `;
 
 const fs = `#version 300 es
-  #define ALPHA 0.9
+  #define ALPHA 1.0
   
   precision highp float;
   precision highp int;
@@ -66,7 +76,7 @@ const fs = `#version 300 es
   out vec4 color;
 
   void main(){
-    color = vec4(v_color * ALPHA, v_alpha);
+    color = vec4(v_color, v_alpha);
   }
 `;
 

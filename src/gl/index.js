@@ -6,7 +6,8 @@ import {
 	POSITION_LOCATION,
 	COLOR_LOCATION,
 	AGE_LOCATION,
-	INIT_OFFSET_LOCATION
+	INIT_OFFSET_LOCATION,
+	PICKING_COLOR_LOCATION
 } from './config';
 
 import {
@@ -23,6 +24,7 @@ import {
 } from './shader';
 
 import {randomNormal, pie} from 'd3';
+import {Color} from 'three';
 
 function GLModule(gl){
 
@@ -49,6 +51,7 @@ function GLModule(gl){
 	//Uniform locations
 	const uWLocation = gl.getUniformLocation(program, 'u_w');
 	const uHLocation = gl.getUniformLocation(program, 'u_h');
+	const uUsePickingColorLocation = gl.getUniformLocation(program, 'u_usePickingColor');
 	const tf_uTimeLocation = gl.getUniformLocation(tfProgram, 'u_time');
 	const tf_uWLocation = gl.getUniformLocation(tfProgram, 'u_w');
 	const tf_uHLocation = gl.getUniformLocation(tfProgram, 'u_h');
@@ -60,6 +63,11 @@ function GLModule(gl){
 	//VAOs, transformFeedback
 	//Initialize two sets of VAOs and transformFeedBack objects, to be ping-ponged
 	const {vaos, tfs, buffers} = initVAOs(gl);
+
+	//Set up framebuffer object for off screen rendering and picking
+	const framebuffer = gl.createFramebuffer();
+	const texture = gl.createTexture();
+	const depthbuffer = gl.createRenderbuffer();
 
 	function exports(){
 
@@ -87,8 +95,41 @@ function GLModule(gl){
 		//Update attribute values
 		_updateBufferData(buffers);
 
+		//Update FBO for off canvas rendering
+		_updateFBO(framebuffer, texture, depthbuffer, _w, _h);
+
 		//Enter render loop
 		_render();
+
+	}
+
+	function _updateFBO(framebuffer, texture, depthbuffer, _w, _h){
+
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, _w, _h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		framebuffer.texture = texture;
+
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthbuffer); // Bind the object to target
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, _w, _h);
+    
+    // Attach the texture and the renderbuffer object to the FBO
+   	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthbuffer);
+
+    // Check if FBO is configured correctly
+    var e = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    console.log(e);
+    if (gl.FRAMEBUFFER_COMPLETE !== e) {
+      console.log('Frame buffer object is incomplete: ' + e.toString());
+      return error();
+    }
+
+    // Unbind the buffer object
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 
 	}
 
@@ -124,15 +165,30 @@ function GLModule(gl){
 
 	exports.onClick = function(cb, target){
 		//Implement mousepicking logic here, and invoke callback function
-		target.addEventListener('click', function(){
+		target.addEventListener('click', function(e){
 			//Basic logic
 			//Render to an offscreen canvas with unique colors for each instance
-			//Unique color can be generated from a hashing function that takes id as input
+		 	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer); //render to off screen framebuffer
+		 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		 	gl.useProgram(program);
+		  gl.uniform1f(uUsePickingColorLocation, 1.0); //render pass does not use pickingColor
+		  gl.bindVertexArray(vaos[sourceIdx]);
+		  gl.vertexAttribDivisor(OFFSET_LOCATION, 1);
+		  gl.vertexAttribDivisor(ROTATION_LOCATION, 1);
+		  gl.vertexAttribDivisor(AGE_LOCATION, 1);
+		  gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, _instances);
 
 			//Then, read the value of the clicked pixel
+			const [x,y] = [e.clientX, _h - e.clientY];
+			const pixels = new Uint8Array(4);
+			gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
 
 			//Re-construct the id of the card, and emit callback
-			cb();
+			const index = ( pixels[0] << 16 ) | ( pixels[1] << 8 ) | ( pixels[2] );
+
+			if(index){
+				cb(index, _categories[index]);
+			}
 		});
 		return this;
 	}
@@ -169,9 +225,10 @@ function GLModule(gl){
 	function _render(){
 		_transform();
 
+	  gl.bindFramebuffer(gl.FRAMEBUFFER, null); //render to screen
 	  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
 	  gl.useProgram(program);
+	  gl.uniform1f(uUsePickingColorLocation, 0.0); //render pass does not use pickingColor
 	  gl.bindVertexArray(vaos[sourceIdx]);
 	  gl.vertexAttribDivisor(OFFSET_LOCATION, 1);
 	  gl.vertexAttribDivisor(ROTATION_LOCATION, 1);
@@ -298,6 +355,22 @@ function GLModule(gl){
 		})
 	}
 
+	function _updatePickingColorBuffer(buffers){
+		const pickingColors = new Float32Array(
+			Array
+				.from({length:_instances})
+				.map((d,i) => {
+					const c = new Color().setHex(i);
+					return [c.r, c.g, c.b];
+				})
+				.reduce((acc,v) => acc.concat(v), [])
+		);
+		buffers.forEach(buffer => {
+	    gl.bindBuffer(gl.ARRAY_BUFFER, buffer[PICKING_COLOR_LOCATION]);
+	    gl.bufferData(gl.ARRAY_BUFFER, pickingColors, gl.STATIC_DRAW);
+		});
+	}
+
 	function _updateBufferData(buffers){
 		
 		_updatePositionBuffer(buffers);
@@ -305,58 +378,7 @@ function GLModule(gl){
 		_updateOffsetBuffer(buffers);
 		_updateRotationsBuffer(buffers);
 		_updateAgeBuffer(buffers);
-		// const rand = randomNormal(.3,.2);
-
-		// const categories = generateShuffledCategories(_proportions, _instances);
-		// const positions = new Float32Array([
-		//   6.0, 3.5,
-		//   -6.0, 3.5,
-		//   -6.0, -3.5,
-		//   -6.0, -3.5,
-		//   6.0, -3.5,
-		//   6.0, 3.5
-		// ]); //triangular vertices of each instance
-		// const colors = new Float32Array(
-		// 	Array
-		// 		.from({length:_instances})
-		// 		.map((d,i) => {
-		// 			const cat = categories[i]?categories[i]:0; //between 0 and 9
-		// 			return [COLOR_RAMP[cat*3], COLOR_RAMP[cat*3+1], COLOR_RAMP[cat*3+2]];
-		// 		})
-		// 		.reduce((acc,v) => acc.concat(v), [])
-		// );
-		// const offsets = new Float32Array(
-		// 	Array
-		// 		.from({length:_instances})
-		// 		.map(() => [(rand() + 0.5)*_h/2, Math.random()*Math.PI*2])
-		// 		.map(([r, theta]) => [r * Math.cos(theta)+_w/2, r * Math.sin(theta)+_h/2])
-		// 		.reduce((acc,v) => acc.concat(v), [])
-		// );
-		// const rotations = new Float32Array(
-		// 	Array
-		// 		.from({length:_instances})
-		// 		.map(() => Math.random()*2*Math.PI)
-		// );
-		// const age = new Float32Array(
-		// 	Array
-		// 		.from({length:_instances})
-		// 		.map(() => Math.random())
-		// );
-
-		// buffers.forEach(buffer => {
-		// 	gl.bindBuffer(gl.ARRAY_BUFFER, buffer[OFFSET_LOCATION]);
-		// 		gl.bufferData(gl.ARRAY_BUFFER, offsets, gl.STREAM_COPY);
-		// 	gl.bindBuffer(gl.ARRAY_BUFFER, buffer[ROTATION_LOCATION]);
-		// 		gl.bufferData(gl.ARRAY_BUFFER, rotations, gl.STREAM_COPY);
-	 //    gl.bindBuffer(gl.ARRAY_BUFFER, buffer[POSITION_LOCATION]);
-	 //    	gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-	 //    gl.bindBuffer(gl.ARRAY_BUFFER, buffer[COLOR_LOCATION]);
-	 //    	gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-	 //    gl.bindBuffer(gl.ARRAY_BUFFER, buffer[AGE_LOCATION]);
-	 //    	gl.bufferData(gl.ARRAY_BUFFER, age, gl.STREAM_COPY);
-	 //    gl.bindBuffer(gl.ARRAY_BUFFER, buffer[INIT_OFFSET_LOCATION]);
-	 //    	gl.bufferData(gl.ARRAY_BUFFER, offsets, gl.STATIC_DRAW);
-		// });
+		_updatePickingColorBuffer(buffers);
 
 	}
 
